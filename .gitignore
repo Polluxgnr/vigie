@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Data and artefacts (never committed: datasets have their own licences)
+data/
+runs/
+weights/
+*.pt
+*.onnx
+*_openvino_model/
+*.mp4
+*.avi
+!docs/media/*.mp4
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
