@@ -18,6 +18,7 @@ import numpy as np
 from .cues import frame_features, window_features
 from .data import Track
 from .geometry import L_HIP, R_HIP, fill_gaps, normalise
+from .render import COLORS, draw_person, panel, privacy_background, sigmoid
 from .scorer import Scorer
 from .windows import WIN
 
@@ -25,9 +26,6 @@ FPS = 15
 HISTORY = 70  # frames kept per person (4.7 s): window + "reach then conceal" look-back
 STALE = 15  # forget a person unseen for 1 s
 
-SKELETON = [(5, 7), (7, 9), (6, 8), (8, 10), (5, 6), (5, 11), (6, 12), (11, 12), (11, 13),
-            (13, 15), (12, 14), (14, 16), (0, 5), (0, 6)]  # fmt: skip
-COLORS = {"normal": (170, 200, 60), "watch": (0, 190, 255), "alert": (60, 60, 240)}  # BGR
 
 
 @dataclass
@@ -41,10 +39,6 @@ class PersonState:
     reasons: list = field(default_factory=list)
     last_seen: int = 0
     alerts: int = 0
-
-
-def _sigmoid(x: float) -> float:
-    return float(1 / (1 + np.exp(-x)))
 
 
 class LivePipeline:
@@ -113,7 +107,7 @@ class LivePipeline:
                     p.alerts += 1
                     p.reasons = self.scorer.cue_ref.reasons(ff) or ["unusual movement"]
                     self.events.append({"t": round(self.t / FPS, 2), "person": int(pid),
-                                        "risk": round(_sigmoid(p.risk), 3), "reasons": p.reasons})  # fmt: skip
+                                        "risk": round(sigmoid(p.risk), 3), "reasons": p.reasons})  # fmt: skip
                 else:
                     p.state = "watch" if p.risk >= self.watch else "normal"
             elif p.risk < self.thr - 1.5:  # calm again: re-arm
@@ -122,64 +116,19 @@ class LivePipeline:
     # ------------------------------------------------------------------ rendering
     def _render(self, frame: np.ndarray, privacy: bool, proc_fps: float) -> np.ndarray:
         h, w = frame.shape[:2]
-        if privacy:
-            small = cv2.resize(frame, (max(1, w // 24), max(1, h // 24)), interpolation=cv2.INTER_AREA)
-            frame = cv2.resize(small, (w, h), interpolation=cv2.INTER_NEAREST)
-            frame = cv2.GaussianBlur(frame, (0, 0), 6)
-            frame = (frame * 0.45).astype(np.uint8)
-        else:
-            frame = frame.copy()
-        any_alert = False
-        for pid, p in self.people.items():
-            if self.t - p.last_seen > 2 or not p.kps:
-                continue
-            k = p.kps[-1]
-            col = COLORS[p.state]
-            any_alert |= p.state == "alert"
-            for a, b in SKELETON:
-                if k[a, 2] > 0.3 and k[b, 2] > 0.3:
-                    cv2.line(frame, tuple(map(int, k[a, :2])), tuple(map(int, k[b, :2])), col, 3, cv2.LINE_AA)
-            for j in range(17):
-                if k[j, 2] > 0.3:
-                    cv2.circle(frame, tuple(map(int, k[j, :2])), 4, (255, 255, 255), -1, cv2.LINE_AA)
-            vis = k[k[:, 2] > 0.3]
-            if len(vis):
-                x0, y0 = int(vis[:, 0].min()), int(vis[:, 1].min()) - 14
-                tag = f"ID {pid}  {100 * _sigmoid(p.risk):.0f}%"
-                cv2.putText(frame, tag, (x0, max(14, y0)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, col, 2, cv2.LINE_AA)
-        if any_alert:
+        frame = privacy_background(frame) if privacy else frame.copy()
+        active = [(pid, p) for pid, p in self.people.items() if self.t - p.last_seen <= 2 and p.kps]
+        for pid, p in active:
+            draw_person(frame, p.kps[-1], p.state, f"ID {pid}  {100 * sigmoid(p.risk):.0f}%")
+        if any(p.state == "alert" for _, p in active):
             cv2.rectangle(frame, (0, 0), (w - 1, h - 1), COLORS["alert"], 8)
-        panel = self._panel(h, proc_fps)
-        return np.hstack([frame, panel])
-
-    def _panel(self, h: int, proc_fps: float) -> np.ndarray:
-        pw = 380
-        panel = np.full((h, pw, 3), (24, 22, 20), np.uint8)
-        put = lambda txt, y, s=0.55, c=(230, 230, 230), t=1: cv2.putText(  # noqa: E731
-            panel, txt, (18, y), cv2.FONT_HERSHEY_SIMPLEX, s, c, t, cv2.LINE_AA)
-        put("VIGIE", 40, 0.9, (255, 255, 255), 2)
-        put("privacy view - skeletons only", 64, 0.45, (160, 160, 160))
-        active = [(pid, p) for pid, p in self.people.items() if self.t - p.last_seen <= 2]
+        people = [(f"ID {pid}", p.state, p.risk) for pid, p in sorted(active, key=lambda a: -a[1].risk)]
         n_alerts = sum(p.alerts for p in self.people.values())
-        put(f"people {len(active)}   alerts {n_alerts}   {proc_fps:.0f} fps CPU", 96, 0.5)
-        y = 130
-        thr_x = 18 + int((pw - 36) * _sigmoid(self.thr))
-        for pid, p in sorted(active, key=lambda a: -a[1].risk)[:6]:
-            col = COLORS[p.state]
-            put(f"ID {pid}  {p.state.upper()}", y, 0.5, col, 1)
-            y += 10
-            cv2.rectangle(panel, (18, y), (pw - 18, y + 10), (60, 60, 60), -1)
-            cv2.rectangle(panel, (18, y), (18 + int((pw - 36) * _sigmoid(p.risk)), y + 10), col, -1)
-            cv2.line(panel, (thr_x, y - 3), (thr_x, y + 13), (255, 255, 255), 1)
-            y += 30
-        y = max(y + 10, h - 30 - 24 * min(5, len(self.events)) - 30)
-        put("EVENT LOG", y, 0.5, (200, 200, 200))
-        y += 26
-        for ev in self.events[-5:][::-1]:
-            put(f"{ev['t']:6.1f}s ID {ev['person']}: {', '.join(ev['reasons'])[:34]}", y, 0.42,
-                COLORS["alert"])  # fmt: skip
-            y += 24
-        return panel
+        side = panel(h, "privacy view - skeletons only",
+                     f"people {len(active)}   alerts {n_alerts}   {proc_fps:.0f} fps CPU",
+                     people, self.thr,
+                     [{**e, "person": f"ID {e['person']}"} for e in self.events])  # fmt: skip
+        return np.hstack([frame, side])
 
     # ------------------------------------------------------------------ main loop
     def run(self, source, out_video: str | None = None, events_path: str | None = None,

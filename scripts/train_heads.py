@@ -132,6 +132,14 @@ def main() -> None:
                         "median_delay_s": float(np.median(delays)) if delays else None}  # fmt: skip
                 break
         row["operating_point"] = best
+        if name == "all three":  # full trade-off curve for the report
+            curve = []
+            for q in [0.95, 0.98, 0.99, 0.995, 0.998, 0.999, 0.9995, 0.9998, 0.9999]:
+                pol = AlertPolicy(float(np.quantile(fused(s_cal, keys), q)))
+                rate, _, _ = false_alarms_per_hour(fa_videos, ws_fa, fa, pol)
+                rec, _, _ = event_recall(test, ws_te, te, pol)
+                curve.append({"quantile": q, "fa_per_hour": rate, "event_recall": rec})
+            row["tradeoff"] = curve
         results[name] = row
         m0 = row["sigma0"]
         op = (f"recall {best['event_recall']:.2f} @ {best['fa_per_hour']:.2f} FA/h"

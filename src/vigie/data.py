@@ -91,7 +91,7 @@ def load_split(
     files = files if files is not None else sorted(Path(pose_dir).glob("*.json"))
     videos = []
     for f in files:
-        name = f.stem
+        name = f.stem.replace("_alphapose_tracked_person", "")  # STG-NF naming
         tracks = load_pose_json(f, min_len=min_len)
         last = max((int(t.frames[-1]) for t in tracks), default=-1)
         labels = None
@@ -175,10 +175,10 @@ SPLITS = {
         RAW / "retails/RetailS/RetailS_test_realworld/pose/test",
         RAW / "retails/RetailS/RetailS_test_realworld/gt/test_frame_mask",
     ),
-    "poselift_train": (RAW / "poselift/PoseLift/Json_files/data/PoseLift/pose/train", None),
+    "poselift_train": (RAW / "poselift/Json_files/data/PoseLift/pose/train", None),
     "poselift_test": (
-        RAW / "poselift/PoseLift/Json_files/data/PoseLift/pose/test",
-        RAW / "poselift/PoseLift/Json_files/data/PoseLift/gt/test_frame_mask",
+        RAW / "poselift/Json_files/data/PoseLift/pose/test",
+        RAW / "poselift/Json_files/data/PoseLift/gt/test_frame_mask",
     ),
 }
 
