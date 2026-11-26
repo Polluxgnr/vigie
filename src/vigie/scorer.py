@@ -61,19 +61,25 @@ class Scorer:
         np.savez(folder / "references.npz", **{f"ref_{k}": r.ref for k, r in self.refs.items()},
                  **self.cue_ref.to_arrays())  # fmt: skip
         (folder / "scorer.json").write_text(
-            json.dumps({"keys": self.keys, "threshold": self.threshold, "meta": self.meta}, indent=2)
+            json.dumps(
+                {"keys": self.keys, "threshold": self.threshold, "meta": self.meta}, indent=2
+            )
         )
 
     @classmethod
-    def load(cls, folder) -> "Scorer":
+    def load(cls, folder) -> Scorer:
         folder = Path(folder)
         cfg = json.loads((folder / "scorer.json").read_text())
         norm = load_model(folder / "normality.pt")
         clf = TheftClassifier(norm)
-        clf.load_state_dict(torch.load(folder / "classifier.pt", map_location="cpu", weights_only=True))
+        clf.load_state_dict(
+            torch.load(folder / "classifier.pt", map_location="cpu", weights_only=True)
+        )
         clf.eval()
         z = np.load(folder / "references.npz", allow_pickle=False)
-        refs = {k[4:]: NormalReference.__new__(NormalReference) for k in z.files if k.startswith("ref_")}
+        refs = {
+            k[4:]: NormalReference.__new__(NormalReference) for k in z.files if k.startswith("ref_")
+        }
         for k, r in refs.items():
             r.ref = z[f"ref_{k}"]
         return cls(norm, clf, joblib.load(folder / "gbm.joblib"), refs,

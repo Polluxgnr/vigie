@@ -20,10 +20,24 @@ def draw_person(img, k: np.ndarray, state: str, label: str, conf_min: float = 0.
     col = COLORS[state]
     for a, b in SKELETON:
         if k[a, 2] > conf_min and k[b, 2] > conf_min:
-            cv2.line(img, (int(k[a, 0]), int(k[a, 1])), (int(k[b, 0]), int(k[b, 1])), col, thick, cv2.LINE_AA)
+            cv2.line(
+                img,
+                (int(k[a, 0]), int(k[a, 1])),
+                (int(k[b, 0]), int(k[b, 1])),
+                col,
+                thick,
+                cv2.LINE_AA,
+            )
     for j in range(17):
         if k[j, 2] > conf_min:
-            cv2.circle(img, (int(k[j, 0]), int(k[j, 1])), max(2, thick + 1), (255, 255, 255), -1, cv2.LINE_AA)
+            cv2.circle(
+                img,
+                (int(k[j, 0]), int(k[j, 1])),
+                max(2, thick + 1),
+                (255, 255, 255),
+                -1,
+                cv2.LINE_AA,
+            )
     vis = k[k[:, 2] > conf_min]
     if len(vis):
         x0, y0 = int(vis[:, 0].min()), int(vis[:, 1].min()) - 14
@@ -62,13 +76,14 @@ def panel(h: int, title_sub: str, stats: str, people: list[tuple], threshold: fl
         cv2.line(p, (thr_x, y - 3), (thr_x, y + 13), (255, 255, 255), 1)
         y += 30
     n_ev = min(5, len(events))
-    y = max(y + 10, h - 40 - 24 * n_ev - 30 - (24 if footer else 0))
+    y = max(y + 10, h - 40 - 42 * n_ev - 30 - (24 if footer else 0))
     put("EVENT LOG", y, 0.5, (200, 200, 200))
     y += 26
     for ev in events[-5:][::-1]:
-        txt = f"{ev['t']:5.1f}s {ev['person']}: {', '.join(ev['reasons'])}"
-        put(txt[:44], y, 0.42, COLORS["alert"])
-        y += 24
+        col = COLORS["watch"] if "review" in str(ev["person"]) else COLORS["alert"]
+        put(f"{ev['t']:5.1f}s {ev['person']}", y, 0.42, col)
+        put("  " + ", ".join(ev["reasons"])[:42], y + 18, 0.4, (200, 200, 200))
+        y += 42
     if footer:
         put(footer, h - 18, 0.42, (150, 150, 150))
     return p

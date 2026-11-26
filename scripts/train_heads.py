@@ -17,21 +17,28 @@ import argparse
 import json
 from pathlib import Path
 
+import joblib
 import numpy as np
 import torch
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import GroupKFold
 
 from vigie.data import get_split
-from vigie.eval import (AlertPolicy, bootstrap_ci, event_recall, false_alarms_per_hour,
-                        frame_scores, metrics)  # fmt: skip
+from vigie.eval import (
+    AlertPolicy,
+    bootstrap_ci,
+    event_recall,
+    false_alarms_per_hour,
+    frame_scores,  # fmt: skip
+    metrics,
+)
 from vigie.explain import CueReference
 from vigie.fusion import NormalReference, fuse
-from vigie.scorer import Scorer
 from vigie.models.classifier import predict, train_classifier
 from vigie.models.normality import load_model, score_frames
 from vigie.models.supervised import feature_matrix, feature_names, importances, make_head
-from vigie.windows import WIN, build_windows, window_frame_labels
+from vigie.scorer import Scorer
+from vigie.windows import WIN, build_windows, load_windows, save_windows, window_frame_labels
 
 TARGET_FA_PER_HOUR = 1.0
 
@@ -48,7 +55,7 @@ def main() -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     norm = load_model(args.normality)
-    log = lambda m: print(m, flush=True)  # noqa: E731
+    log = lambda m: print(m, flush=True)
 
     # ------------------------------------------------------------------ data
     holdout = get_split("retails_holdout")
@@ -57,48 +64,88 @@ def main() -> None:
     staged = get_split("retails_staged")
     test = get_split(args.test)
 
-    ws_st = build_windows(staged, min_len=8)
-    ws_ref = build_windows(neg_videos, max_windows=args.normal_windows, seed=3)
-    ws_cal = build_windows(cal_videos, max_windows=args.normal_windows, seed=4)
-    ws_fa = build_windows(fa_videos)
-    ws_te = build_windows(test, min_len=8)
-    log(f"windows: staged {len(ws_st)}, normal-neg {len(ws_ref)}, normal-cal {len(ws_cal)}, "
-        f"fa {len(ws_fa)} ({sum(v.n_frames for v in fa_videos) / 15 / 3600:.1f} h), test {len(ws_te)}")
+    # every expensive step is cached in `out/cache`, so an interrupted run resumes where it stopped
+    cache = out / "cache"
+    cache.mkdir(exist_ok=True)
 
-    pf = {k: score_frames(norm, w.pose) for k, w in
-          {"st": ws_st, "ref": ws_ref, "cal": ws_cal, "fa": ws_fa, "te": ws_te}.items()}  # fmt: skip
+    def cached_windows(key, videos, **kw):
+        p = cache / f"ws_{key}.npz"
+        if p.exists():
+            return load_windows(p)
+        ws = build_windows(videos, **kw)
+        save_windows(ws, p)
+        return ws
+
+    ws_st = cached_windows("st", staged, min_len=8)
+    ws_ref = cached_windows("ref", neg_videos, max_windows=args.normal_windows, seed=3)
+    ws_cal = cached_windows("cal", cal_videos, max_windows=args.normal_windows, seed=4)
+    ws_fa = cached_windows("fa", fa_videos)
+    ws_te = cached_windows(f"te_{args.test}", test, min_len=8)
+    log(
+        f"windows: staged {len(ws_st)}, normal-neg {len(ws_ref)}, normal-cal {len(ws_cal)}, "
+        f"fa {len(ws_fa)} ({sum(v.n_frames for v in fa_videos) / 15 / 3600:.1f} h), test {len(ws_te)}"
+    )
+
+    pf = {}
+    for k, w in {
+        "st": ws_st,
+        "ref": ws_ref,
+        "cal": ws_cal,
+        "fa": ws_fa,
+        f"te_{args.test}": ws_te,
+    }.items():
+        p = cache / f"pf_{k}.npy"
+        if not p.exists():
+            np.save(p, score_frames(norm, w.pose))
+        pf[k.split("_")[0]] = np.load(p, allow_pickle=False)
+    log("normality scores ready")
 
     # training set for the heads: staged windows + normal reference windows
-    X = np.concatenate([feature_matrix(ws_st.cues, pf["st"]), feature_matrix(ws_ref.cues, pf["ref"])])
+    X = np.concatenate(
+        [feature_matrix(ws_st.cues, pf["st"]), feature_matrix(ws_ref.cues, pf["ref"])]
+    )
     y_soft = np.concatenate([ws_st.label, np.zeros(len(ws_ref), np.float32)])
     y = (y_soft >= 0.5).astype(int)
     groups = np.concatenate([ws_st.video, 10_000 + ws_ref.video])
     names = feature_names()
 
     # ------------------------------------------------------------------ head 1: boosted trees
-    cv_pred = np.zeros(len(y))
-    for tr, va in GroupKFold(n_splits=5).split(X, y, groups):
-        m = make_head().fit(X[tr], y[tr])
-        cv_pred[va] = m.predict_proba(X[va])[:, 1]
     st_mask = np.arange(len(y)) < len(ws_st)
-    log(f"GBM 5-fold CV AUC (grouped by video): all {roc_auc_score(y, cv_pred):.3f}, "
-        f"staged-only {roc_auc_score(y[st_mask], cv_pred[st_mask]):.3f}")  # fmt: skip
-    gbm = make_head().fit(X, y)
-    imp = importances(gbm, X[st_mask], y[st_mask], names)
+    gbm_path, imp_path = cache / "gbm.joblib", cache / "importances.json"
+    if gbm_path.exists():
+        gbm, imp = joblib.load(gbm_path), json.loads(imp_path.read_text())
+    else:
+        cv_pred = np.zeros(len(y))
+        for tr, va in GroupKFold(n_splits=5).split(X, y, groups):
+            m = make_head().fit(X[tr], y[tr])
+            cv_pred[va] = m.predict_proba(X[va])[:, 1]
+        log(f"GBM 5-fold CV AUC (grouped by video): all {roc_auc_score(y, cv_pred):.3f}, "
+            f"staged-only {roc_auc_score(y[st_mask], cv_pred[st_mask]):.3f}")  # fmt: skip
+        gbm = make_head().fit(X, y)
+        imp = importances(gbm, X[st_mask], y[st_mask], names)
+        joblib.dump(gbm, gbm_path)
+        imp_path.write_text(json.dumps(imp))
     log("top features (permutation importance on staged): " +
         ", ".join(f"{n} {v:.3f}" for n, v in imp[:8]))  # fmt: skip
 
     # ------------------------------------------------------------------ head 2: fine-tuned net
     pose_tr = np.concatenate([ws_st.pose, ws_ref.pose])
-    fl_tr = np.concatenate([window_frame_labels(staged, ws_st), np.zeros((len(ws_ref), WIN), np.uint8)])
-    clf = train_classifier(norm, pose_tr, y_soft, fl_tr, epochs=args.clf_epochs, log=log)
+    fl_tr = np.concatenate(
+        [window_frame_labels(staged, ws_st), np.zeros((len(ws_ref), WIN), np.uint8)]
+    )
+    clf = train_classifier(norm, pose_tr, y_soft, fl_tr, epochs=args.clf_epochs, log=log,
+                           checkpoint=cache / "classifier_ckpt.pt")  # fmt: skip
     torch.save(clf.state_dict(), out / "classifier.pt")
 
     # ------------------------------------------------------------------ scoring
     def scores(ws, pfr):
         g = gbm.predict_proba(feature_matrix(ws.cues, pfr))[:, 1]
         cw, cf = predict(clf, ws.pose)
-        return {"normality": pfr, "gbm": np.repeat(g[:, None], WIN, 1), "finetuned": cf * 0.5 + cw[:, None] * 0.5}
+        return {
+            "normality": pfr,
+            "gbm": np.repeat(g[:, None], WIN, 1),
+            "finetuned": cf * 0.5 + cw[:, None] * 0.5,
+        }
 
     s_cal, s_fa, s_te = scores(ws_cal, pf["cal"]), scores(ws_fa, pf["fa"]), scores(ws_te, pf["te"])
     refs = {k: NormalReference(v) for k, v in s_cal.items()}
@@ -142,8 +189,11 @@ def main() -> None:
             row["tradeoff"] = curve
         results[name] = row
         m0 = row["sigma0"]
-        op = (f"recall {best['event_recall']:.2f} @ {best['fa_per_hour']:.2f} FA/h"
-              if best else "no threshold met the FA budget")
+        op = (
+            f"recall {best['event_recall']:.2f} @ {best['fa_per_hour']:.2f} FA/h"
+            if best
+            else "no threshold met the FA budget"
+        )
         log(f"{name:14s} AUC-ROC {100 * m0['auc_roc']:5.2f} "
             f"[{100 * m0['ci']['auc_roc'][0]:.1f}-{100 * m0['ci']['auc_roc'][1]:.1f}]  "
             f"AUC-PR {100 * m0['auc_pr']:5.2f}  EER {m0['eer']:.3f} | sigma5 AUC-ROC "

@@ -75,9 +75,9 @@ def load_pose_json(path: Path, min_len: int = 1) -> list[Track]:
         if len(frames) < min_len:
             continue
         idx = np.array(sorted(int(k) for k in frames), dtype=np.int32)
-        kps = np.array(
-            [frames[str(i)]["keypoints"] for i in idx], dtype=np.float32
-        ).reshape(len(idx), N_JOINTS, 3)
+        kps = np.array([frames[str(i)]["keypoints"] for i in idx], dtype=np.float32).reshape(
+            len(idx), N_JOINTS, 3
+        )
         tracks.append(Track(pid=str(pid), frames=idx, kps=_clean(kps)))
     return tracks
 
@@ -141,9 +141,7 @@ def load_cache(path: Path) -> list[Video]:
     # keypoints stay float16 in memory (half the RAM); geometry casts each segment when used
     frames, kps, owner = z["frames"], z["kps"], z["owner"]
     labels, label_owner = z["labels"], z["label_owner"]
-    videos = [
-        Video(m["name"], m["camera"], [], None, m["n_frames"]) for m in meta["videos"]
-    ]
+    videos = [Video(m["name"], m["camera"], [], None, m["n_frames"]) for m in meta["videos"]]
     # split the flat arrays back into tracks: rows are contiguous per (video, track)
     if len(owner):
         change = np.flatnonzero(np.any(np.diff(owner, axis=0) != 0, axis=1)) + 1

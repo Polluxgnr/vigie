@@ -97,8 +97,8 @@ def frame_features(body: np.ndarray, track_xy: np.ndarray | None = None) -> np.n
         # reach must happen at least 0.2 s before the concealment
         rtc = conceal * _past_max(reach, 3, HISTORY)
         dwell = _dwell(d_pocket < 0.3) / FPS
-        per_hand[side] = dict(d_pocket=d_pocket, d_waist=d_waist, d_torso=d_torso, reach=reach,
-                              height=-w[:, 1], hidden=hidden, speed=speed, rtc=rtc, dwell=dwell)  # fmt: skip
+        per_hand[side] = {"d_pocket": d_pocket, "d_waist": d_waist, "d_torso": d_torso, "reach": reach,
+                              "height": -w[:, 1], "hidden": hidden, "speed": speed, "rtc": rtc, "dwell": dwell}  # fmt: skip
 
     L, R = per_hand["L"], per_hand["R"]
     ear_mid = (xy[:, L_EAR, 0] + xy[:, R_EAR, 0]) / 2

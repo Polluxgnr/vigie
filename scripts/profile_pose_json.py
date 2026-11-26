@@ -17,7 +17,7 @@ for f in sample:
     d = json.loads(f.read_text())
     people.append(len(d))
     allframes = []
-    for pid, frames in d.items():
+    for frames in d.values():
         fr = sorted(int(k) for k in frames)
         allframes += fr
         lens.append(len(fr))

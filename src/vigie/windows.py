@@ -27,7 +27,7 @@ class WindowSet:
     def __len__(self) -> int:
         return len(self.video)
 
-    def subset(self, idx: np.ndarray) -> "WindowSet":
+    def subset(self, idx: np.ndarray) -> WindowSet:
         return WindowSet(*(getattr(self, f)[idx] for f in self.__dataclass_fields__))
 
 
@@ -86,7 +86,11 @@ def build_windows(
                 continue
             for frames, kps in segments(videos[vi].tracks[ti]):
                 starts = window_starts(len(frames), WIN, stride)
-                sel = np.ones(len(starts), bool) if keep is None else keep[offset : offset + len(starts)]
+                sel = (
+                    np.ones(len(starts), bool)
+                    if keep is None
+                    else keep[offset : offset + len(starts)]
+                )
                 offset += len(starts)
                 if sel.any():
                     yield vi, ti, frames, kps, starts[sel]

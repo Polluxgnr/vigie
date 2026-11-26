@@ -9,6 +9,7 @@ recipe for small labelled sets, applied to skeletons.
 from __future__ import annotations
 
 import copy
+import os
 import time
 
 import numpy as np
@@ -49,8 +50,12 @@ def train_classifier(
     batch: int = 128,
     seed: int = 0,
     log=print,
+    checkpoint=None,
 ) -> TheftClassifier:
-    """window_label (W,) in [0,1]; frame_label (W, T) in {0,1}."""
+    """window_label (W,) in [0,1]; frame_label (W, T) in {0,1}.
+
+    With ``checkpoint`` (a path), state is saved after every epoch and training resumes from it.
+    """
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     model = TheftClassifier(backbone)
@@ -63,7 +68,15 @@ def train_classifier(
     bce = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_w))
     bce_f = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_w))
     n = len(pose)
-    for ep in range(epochs):
+    start = 0
+    if checkpoint is not None and os.path.exists(checkpoint):
+        ck = torch.load(checkpoint, map_location="cpu", weights_only=False)
+        model.load_state_dict(ck["model"])
+        opt.load_state_dict(ck["opt"])
+        rng.bit_generator.state = ck["rng"]
+        start = ck["epoch"]
+        log(f"classifier resumed after epoch {start}")
+    for ep in range(start, epochs):
         model.train()
         t0, total = time.time(), 0.0
         order = rng.permutation(n)
@@ -80,11 +93,16 @@ def train_classifier(
             opt.step()
             total += loss.item() * len(idx)
         log(f"classifier epoch {ep + 1}/{epochs} loss {total / n:.4f} ({time.time() - t0:.0f}s)")
+        if checkpoint is not None:
+            torch.save({"model": model.state_dict(), "opt": opt.state_dict(),
+                        "rng": rng.bit_generator.state, "epoch": ep + 1}, checkpoint)  # fmt: skip
     return model.eval()
 
 
 @torch.no_grad()
-def predict(model: TheftClassifier, pose: np.ndarray, batch: int = 1024) -> tuple[np.ndarray, np.ndarray]:
+def predict(
+    model: TheftClassifier, pose: np.ndarray, batch: int = 1024
+) -> tuple[np.ndarray, np.ndarray]:
     """Window probabilities (W,) and per-frame probabilities (W, T)."""
     model.eval()
     pw, pf = [], []

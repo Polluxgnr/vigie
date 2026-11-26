@@ -50,7 +50,7 @@ class CueReference:
             p = self.percentile(j, v)
             rarity = p if sign > 0 else 1 - p
             if rarity >= rare:
-                found.append((rarity, text.format(v=v if name != "pocket_dwell" else v)))
+                found.append((rarity, text.format(v=v)))
         found.sort(reverse=True)
         return [t for _, t in found[:top]]
 
@@ -58,10 +58,10 @@ class CueReference:
         return {"cue_sorted": self.sorted.astype(np.float32)}
 
     @classmethod
-    def from_sorted(cls, arr: np.ndarray) -> "CueReference":
+    def from_sorted(cls, arr: np.ndarray) -> CueReference:
         obj = cls.__new__(cls)
         obj.sorted = arr
         return obj
 
 
-__all__ = ["CueReference", "REASONS", "FPS"]
+__all__ = ["FPS", "REASONS", "CueReference"]

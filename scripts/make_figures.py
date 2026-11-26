@@ -12,12 +12,12 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
+import matplotlib.pyplot as plt
+import numpy as np
 
-from vigie.data import get_split  # noqa: E402
-from vigie.eval import frame_scores  # noqa: E402
-from vigie.windows import build_windows  # noqa: E402
+from vigie.data import get_split
+from vigie.eval import frame_scores
+from vigie.windows import build_windows
 
 SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
 BLUE, BASE, ALERT = "#2a78d6", "#a3a29c", "#e34948"
@@ -55,7 +55,9 @@ def fig_benchmark(res: dict) -> None:
             ax.plot(ci, [yi, yi], color=INK2, lw=1.2)
             ax.plot([ci[0]] * 2, [yi - 0.12, yi + 0.12], color=INK2, lw=1.2)
             ax.plot([ci[1]] * 2, [yi - 0.12, yi + 0.12], color=INK2, lw=1.2)
-        ax.text(max(v, ci[1] if ci else v) + 0.6, yi, f"{v:.1f}", va="center", color=INK, fontsize=9)
+        ax.text(
+            max(v, ci[1] if ci else v) + 0.6, yi, f"{v:.1f}", va="center", color=INK, fontsize=9
+        )
     ax.set_yticks(y, [r[0] for r in rows], color=INK)
     ax.set_xlim(50, 100)
     ax.set_xlabel("Frame-level AUC-ROC on the PoseLift real-world test set (%)")
@@ -78,7 +80,9 @@ def fig_tradeoff(res: dict) -> None:
     fig, ax = plt.subplots(figsize=(6, 3.6), dpi=160)
     fig.patch.set_facecolor(SURFACE)
     style(ax)
-    ax.plot(fa, rec, color=BLUE, lw=2, marker="o", ms=5, markeredgecolor=SURFACE, markeredgewidth=1.5)
+    ax.plot(
+        fa, rec, color=BLUE, lw=2, marker="o", ms=5, markeredgecolor=SURFACE, markeredgewidth=1.5
+    )
     op = res["all three"].get("operating_point")
     if op:
         ax.scatter([op["fa_per_hour"]], [100 * op["event_recall"]], s=90, facecolor="none",
@@ -116,7 +120,9 @@ def fig_timelines(scores_path: Path, threshold: float, n: int = 4) -> None:
         ax.axhline(threshold, color=INK2, lw=1, ls=(0, (4, 3)))
         ax.set_ylabel(v.name, rotation=0, ha="right", va="center", fontsize=8)
         ax.set_yticks([])
-    np.atleast_1d(axes)[-1].set_xlabel("seconds   (red band: labelled theft;  dashed: alert threshold)")
+    np.atleast_1d(axes)[-1].set_xlabel(
+        "seconds   (red band: labelled theft;  dashed: alert threshold)"
+    )
     fig.tight_layout()
     fig.savefig(OUT / "timelines.png", facecolor=SURFACE)
     plt.close(fig)

@@ -27,7 +27,6 @@ HISTORY = 70  # frames kept per person (4.7 s): window + "reach then conceal" lo
 STALE = 15  # forget a person unseen for 1 s
 
 
-
 @dataclass
 class PersonState:
     frames: deque = field(default_factory=lambda: deque(maxlen=HISTORY))
@@ -119,10 +118,12 @@ class LivePipeline:
         frame = privacy_background(frame) if privacy else frame.copy()
         active = [(pid, p) for pid, p in self.people.items() if self.t - p.last_seen <= 2 and p.kps]
         for pid, p in active:
-            draw_person(frame, p.kps[-1], p.state, f"ID {pid}  {100 * sigmoid(p.risk):.0f}%")
+            draw_person(frame, p.kps[-1], p.state, f"ID {pid}")
         if any(p.state == "alert" for _, p in active):
             cv2.rectangle(frame, (0, 0), (w - 1, h - 1), COLORS["alert"], 8)
-        people = [(f"ID {pid}", p.state, p.risk) for pid, p in sorted(active, key=lambda a: -a[1].risk)]
+        people = [
+            (f"ID {pid}", p.state, p.risk) for pid, p in sorted(active, key=lambda a: -a[1].risk)
+        ]
         n_alerts = sum(p.alerts for p in self.people.values())
         side = panel(h, "privacy view - skeletons only",
                      f"people {len(active)}   alerts {n_alerts}   {proc_fps:.0f} fps CPU",

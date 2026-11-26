@@ -74,7 +74,9 @@ def body_frame(kps: np.ndarray, smooth: int = 31) -> tuple[np.ndarray, np.ndarra
     unit = tv / np.maximum(length[:, None], 1e-6)
     # running sums over reliable frames only (vectorised moving average)
     w = ok.astype(np.float64)
-    vals = np.column_stack([unit[:, 0] * w, unit[:, 1] * w, np.log(np.maximum(length, 1e-6)) * w, w])
+    vals = np.column_stack(
+        [unit[:, 0] * w, unit[:, 1] * w, np.log(np.maximum(length, 1e-6)) * w, w]
+    )
     csum = np.vstack([np.zeros((1, 4)), np.cumsum(vals, axis=0)])
     half = smooth // 2
     lo = np.clip(np.arange(n) - half, 0, n)

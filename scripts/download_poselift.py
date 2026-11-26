@@ -42,9 +42,9 @@ def main() -> None:
                 got = gdown.download(id=f.id, output=str(target), quiet=True)
                 if got:
                     break
-            except Exception as exc:  # network hiccups, rate limits
+            except Exception as exc:  # noqa: BLE001  (gdown raises many error types)
                 print(f"  retry {attempt + 1} for {f.path}: {type(exc).__name__}")
-            time.sleep(args.pause * (2 ** attempt))
+            time.sleep(args.pause * (2**attempt))
         else:
             failed.append(f.path)
         if i % 25 == 0:

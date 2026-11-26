@@ -100,7 +100,9 @@ def bootstrap_ci(
         vals["auc_roc"].append(roc_auc_score(y, s))
         vals["auc_pr"].append(average_precision_score(y, s))
     lo, hi = 100 * alpha / 2, 100 * (1 - alpha / 2)
-    return {k_: (float(np.percentile(v, lo)), float(np.percentile(v, hi))) for k_, v in vals.items()}
+    return {
+        k_: (float(np.percentile(v, lo)), float(np.percentile(v, hi))) for k_, v in vals.items()
+    }
 
 
 # ---------------------------------------------------------------- alerts and false alarms
