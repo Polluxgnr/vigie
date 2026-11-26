@@ -7,6 +7,7 @@ is pose data. The rendered "privacy view" pixelates the scene so nobody is recog
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -21,6 +22,9 @@ from .geometry import L_HIP, R_HIP, fill_gaps, normalise
 from .render import COLORS, draw_person, panel, privacy_background, sigmoid
 from .scorer import Scorer
 from .windows import WIN
+
+# Privacy: keep Ultralytics from making network calls (update checks, anonymous usage events).
+os.environ.setdefault("YOLO_OFFLINE", "1")
 
 FPS = 15
 HISTORY = 70  # frames kept per person (4.7 s): window + "reach then conceal" look-back
@@ -43,8 +47,12 @@ class PersonState:
 class LivePipeline:
     def __init__(self, scorer: Scorer, pose_model: str = "yolo11n-pose.pt", imgsz: int = 640,
                  update_every: int = 3, ema: float = 0.35, min_frames: int = 6, watch_margin: float = 1.0):  # fmt: skip
+        import torch
         from ultralytics import YOLO  # optional dependency, imported lazily
 
+        # The scorers are tiny; with PyTorch's default thread pool its idle threads keep spinning
+        # and starve OpenVINO's, which made pose estimation 4x slower inside the pipeline.
+        torch.set_num_threads(2)
         self.yolo = YOLO(pose_model, task="pose")
         self.scorer = scorer
         self.imgsz = imgsz
@@ -113,12 +121,21 @@ class LivePipeline:
                 p.armed, p.state = True, "normal"
 
     # ------------------------------------------------------------------ rendering
-    def _render(self, frame: np.ndarray, privacy: bool, proc_fps: float) -> np.ndarray:
+    def _render(
+        self, frame: np.ndarray, privacy: bool, proc_fps: float, out_w: int = 1280
+    ) -> np.ndarray:
+        # draw at a fixed output width: rendering at full 1080p/4K resolution costs more than the
+        # pose model itself on a laptop CPU
+        s = min(1.0, out_w / frame.shape[1])
+        if s < 1.0:
+            frame = cv2.resize(frame, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
         h, w = frame.shape[:2]
         frame = privacy_background(frame) if privacy else frame.copy()
         active = [(pid, p) for pid, p in self.people.items() if self.t - p.last_seen <= 2 and p.kps]
         for pid, p in active:
-            draw_person(frame, p.kps[-1], p.state, f"ID {pid}")
+            k = p.kps[-1].copy()
+            k[:, :2] *= s
+            draw_person(frame, k, p.state, f"ID {pid}", thick=2)
         if any(p.state == "alert" for _, p in active):
             cv2.rectangle(frame, (0, 0), (w - 1, h - 1), COLORS["alert"], 8)
         people = [

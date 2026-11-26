@@ -101,10 +101,14 @@ staff describe the behaviour, which is a good sign the model is not keying on ca
 | ![replay](docs/media/replay_frame.jpg) | ![live](docs/media/live_privacy_view.jpg) |
 | [full video](docs/media/replay.mp4): risk curve under each clip, red band = labelled theft | [full video](docs/media/live_pipeline.mp4): YOLO11-pose + ByteTrack + Vigie on a royalty-free [Pexels](https://www.pexels.com/video/customers-shopping-at-supermarket-10901926/) clip, scene pixelated |
 
-**Speed.** Pose estimation with YOLO11n-pose exported to OpenVINO takes about 100 ms per 1080p frame
-on an Intel i5-1135G7 (no GPU). Scoring every tracked person adds about 40 ms per person every 0.2 s.
-That is about 4 to 8 fps end to end depending on how many people are in view (measured while other
-training jobs shared the CPU), below the 15 fps target; see the roadmap.
+**Speed** (Intel i5-1135G7 laptop, no GPU, idle CPU): YOLO11n-pose exported to OpenVINO takes about
+30 ms per frame and scoring 8 people about 25 ms per update. End to end, on a busy aisle with about 8
+people in view, the pipeline runs at **7 to 8 fps**: tracking and post-processing inside the pipeline
+cost more than the model itself. 15 fps is on the roadmap.
+
+**Privacy in practice:** the pipeline sets `YOLO_OFFLINE=1`, so Ultralytics makes no network calls.
+OpenVINO only collects usage statistics during model *export*; run `opt_in_out --opt_out` once to
+disable that too.
 
 ## How it works
 

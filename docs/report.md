@@ -90,15 +90,19 @@ sustained evidence. Both point to training on whole events rather than windows.
 - **Fusing a weaker scorer hurts.** The pre-registered three-way fusion is 2.8 points below the
   two supervised heads. Percentile calibration puts all scorers on one scale but does not weight them.
 
-## 6. Speed (Intel i5-1135G7, 8 GB RAM, no GPU)
+## 6. Speed (Intel i5-1135G7, 8 GB RAM, no GPU, idle CPU)
 
 | Stage | Time |
 |---|---|
-| YOLO11n-pose, OpenVINO, 1080p frame | ~100 ms |
-| YOLO11n-pose, PyTorch CPU | ~1,700 ms (under load) |
-| Scoring, 8 people (all three scorers) | ~320 ms per update, one update every 3 frames |
+| YOLO11n-pose, OpenVINO, 1080p frame, alone | ~30 ms |
+| Same model with ByteTrack, alone | ~50 ms |
+| Inside the full pipeline, busy aisle (~8 people) | detect + track ~180 ms, scoring ~16 ms, rendering ~36 ms per frame |
+| End to end | 7 to 8 fps |
 
-Measured while other training jobs shared the CPU, so these are upper bounds.
+Two fixes found by profiling: blurring the full frame for the privacy view cost 117 ms per frame
+(now done at 1/24 scale, a few ms), and PyTorch's default thread pool starved OpenVINO's (the
+scorers now use 2 threads). The remaining gap between "detect + track alone" (~50 ms) and inside
+the pipeline (~180 ms) is not explained yet and is the first item for reaching 15 fps.
 
 ## 7. Reproduce
 
