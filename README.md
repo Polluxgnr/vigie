@@ -2,6 +2,8 @@
 
 # Vigie
 
+[![ci](https://github.com/Polluxgnr/vigie/actions/workflows/ci.yml/badge.svg)](https://github.com/Polluxgnr/vigie/actions/workflows/ci.yml) ![python](https://img.shields.io/badge/python-3.10%2B-blue) ![licence](https://img.shields.io/badge/licence-AGPL--3.0-lightgrey) ![hardware](https://img.shields.io/badge/runs%20on-CPU-green)
+
 **Privacy-first shoplifting detection from human pose, real-time on a laptop CPU.**
 
 Vigie never stores a face or a pixel: video becomes skeletons at the camera, and every alert
